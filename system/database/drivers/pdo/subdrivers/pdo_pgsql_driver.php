@@ -18,7 +18,7 @@
  *
  * @package		CodeIgniter
  * @author		EllisLab Dev Team
- * @copyright	Copyright (c) 2008 - 2013, EllisLab, Inc. (http://ellislab.com/)
+ * @copyright	Copyright (c) 2008 - 2014, EllisLab, Inc. (http://ellislab.com/)
  * @license		http://opensource.org/licenses/OSL-3.0 Open Software License (OSL 3.0)
  * @link		http://codeigniter.com
  * @since		Version 3.0.0
@@ -84,6 +84,12 @@ class CI_DB_pdo_pgsql_driver extends CI_DB_pdo_driver {
 
 			empty($this->port) OR $this->dsn .= ';port='.$this->port;
 			empty($this->database) OR $this->dsn .= ';dbname='.$this->database;
+
+			if ( ! empty($this->username))
+			{
+				$this->dsn .= ';username='.$this->username;
+				empty($this->password) OR $this->dsn .= ';password='.$this->password;
+			}
 		}
 	}
 
@@ -130,6 +136,19 @@ class CI_DB_pdo_pgsql_driver extends CI_DB_pdo_driver {
 	// --------------------------------------------------------------------
 
 	/**
+	 * Determines if a query is a "write" type.
+	 *
+	 * @param	string	An SQL query string
+	 * @return	bool
+	 */
+	public function is_write_type($sql)
+	{
+		return (bool) preg_match('/^\s*"?(SET|INSERT(?![^\)]+\)\s+RETURNING)|UPDATE(?!.*\sRETURNING)|DELETE|CREATE|DROP|TRUNCATE|LOAD|COPY|ALTER|RENAME|GRANT|REVOKE|LOCK|UNLOCK|REINDEX)\s/i', str_replace(array("\r\n", "\r", "\n"), ' ', $sql));
+	}
+
+	// --------------------------------------------------------------------
+
+	/**
 	 * "Smart" Escape String
 	 *
 	 * Escapes data based on type
@@ -153,7 +172,7 @@ class CI_DB_pdo_pgsql_driver extends CI_DB_pdo_driver {
 	 * ORDER BY
 	 *
 	 * @param	string	$orderby
-	 * @param	string	$direction	ASC or DESC
+	 * @param	string	$direction	ASC, DESC or RANDOM
 	 * @param	bool	$escape
 	 * @return	object
 	 */

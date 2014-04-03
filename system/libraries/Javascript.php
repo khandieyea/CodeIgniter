@@ -18,7 +18,7 @@
  *
  * @package		CodeIgniter
  * @author		EllisLab Dev Team
- * @copyright	Copyright (c) 2008 - 2013, EllisLab, Inc. (http://ellislab.com/)
+ * @copyright	Copyright (c) 2008 - 2014, EllisLab, Inc. (http://ellislab.com/)
  * @license		http://opensource.org/licenses/OSL-3.0 Open Software License (OSL 3.0)
  * @link		http://codeigniter.com
  * @since		Version 1.0
@@ -34,6 +34,7 @@ defined('BASEPATH') OR exit('No direct script access allowed');
  * @category	Javascript
  * @author		EllisLab Dev Team
  * @link		http://codeigniter.com/user_guide/libraries/javascript.html
+ * @deprecated	3.0.0	This was never a good idea in the first place.
  */
 class CI_Javascript {
 
@@ -172,7 +173,7 @@ class CI_Javascript {
 	 */
 	public function focus($element = 'this', $js = '')
 	{
-		return $this->js->__add_event($focus, $js);
+		return $this->js->_focus($element, $js);
 	}
 
 	// --------------------------------------------------------------------
@@ -187,9 +188,9 @@ class CI_Javascript {
 	 * @param	string	- Javascript code for mouse out
 	 * @return	string
 	 */
-	public function hover($element = 'this', $over, $out)
+	public function hover($element = 'this', $over = '', $out = '')
 	{
-		return $this->js->__hover($element, $over, $out);
+		return $this->js->_hover($element, $over, $out);
 	}
 
 	// --------------------------------------------------------------------

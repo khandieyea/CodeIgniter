@@ -18,7 +18,7 @@
  *
  * @package		CodeIgniter
  * @author		EllisLab Dev Team
- * @copyright	Copyright (c) 2008 - 2013, EllisLab, Inc. (http://ellislab.com/)
+ * @copyright	Copyright (c) 2008 - 2014, EllisLab, Inc. (http://ellislab.com/)
  * @license		http://opensource.org/licenses/OSL-3.0 Open Software License (OSL 3.0)
  * @link		http://codeigniter.com
  * @since		Version 1.0
@@ -50,37 +50,47 @@ if ( ! function_exists('form_open'))
 	 * @param	array	a key/value pair hidden data
 	 * @return	string
 	 */
-	function form_open($action = '', $attributes = '', $hidden = array())
+	function form_open($action = '', $attributes = array(), $hidden = array())
 	{
 		$CI =& get_instance();
 
-		if ($attributes === '')
+		// If no action is provided then set to the current url
+		if ( ! $action)
 		{
-			$attributes = 'method="post"';
+			$action = $CI->config->site_url($CI->uri->uri_string());
 		}
-
 		// If an action is not a full URL then turn it into one
-		if ($action && strpos($action, '://') === FALSE)
+		elseif (strpos($action, '://') === FALSE)
 		{
 			$action = $CI->config->site_url($action);
 		}
-		elseif ( ! $action)
+
+		$attributes = _attributes_to_string($attributes);
+
+		if (stripos($attributes, 'method=') === FALSE)
 		{
-			// If no action is provided then set to the current url
-			$action = $CI->config->site_url($CI->uri->uri_string());
+			$attributes .= ' method="post"';
 		}
 
-		$form = '<form action="'.$action.'"'._attributes_to_string($attributes, TRUE).">\n";
+		if (stripos($attributes, 'accept-charset=') === FALSE)
+		{
+			$attributes .= ' accept-charset="'.strtolower(config_item('charset')).'"';
+		}
+
+		$form = '<form action="'.$action.'"'.$attributes.">\n";
 
 		// Add CSRF field if enabled, but leave it out for GET requests and requests to external websites
-		if ($CI->config->item('csrf_protection') === TRUE && ! (strpos($action, $CI->config->base_url()) === FALSE OR strpos($form, 'method="get"')))
+		if ($CI->config->item('csrf_protection') === TRUE && strpos($action, $CI->config->base_url()) !== FALSE && ! stripos($form, 'method="get"'))
 		{
 			$hidden[$CI->security->get_csrf_token_name()] = $CI->security->get_csrf_hash();
 		}
 
-		if (is_array($hidden) && count($hidden) > 0)
+		if (is_array($hidden))
 		{
-			$form .= '<div style="display:none;">'.form_hidden($hidden).'</div>';
+			foreach ($hidden as $name => $value)
+			{
+				$form .= '<input type="hidden" name="'.$name.'" value="'.form_prep($value).'" style="display:none;" />'."\n";
+			}
 		}
 
 		return $form;
@@ -146,6 +156,7 @@ if ( ! function_exists('form_hidden'))
 			{
 				form_hidden($key, $val, TRUE);
 			}
+
 			return $form;
 		}
 
@@ -180,7 +191,11 @@ if ( ! function_exists('form_input'))
 	 */
 	function form_input($data = '', $value = '', $extra = '')
 	{
-		$defaults = array('type' => 'text', 'name' => ( ! is_array($data) ? $data : ''), 'value' => $value);
+		$defaults = array(
+			'type' => 'text',
+			'name' => is_array($data) ? '' : $data,
+			'value' => $value
+		);
 
 		return '<input '._parse_form_attributes($data, $defaults).$extra." />\n";
 	}
@@ -202,11 +217,7 @@ if ( ! function_exists('form_password'))
 	 */
 	function form_password($data = '', $value = '', $extra = '')
 	{
-		if ( ! is_array($data))
-		{
-			$data = array('name' => $data);
-		}
-
+		is_array($data) OR $data = array('name' => $data);
 		$data['type'] = 'password';
 		return form_input($data, $value, $extra);
 	}
@@ -249,7 +260,11 @@ if ( ! function_exists('form_textarea'))
 	 */
 	function form_textarea($data = '', $value = '', $extra = '')
 	{
-		$defaults = array('name' => ( ! is_array($data) ? $data : ''), 'cols' => '40', 'rows' => '10');
+		$defaults = array(
+			'name' => is_array($data) ? '' : $data,
+			'cols' => '40',
+			'rows' => '10'
+		);
 
 		if ( ! is_array($data) OR ! isset($data['value']))
 		{
@@ -296,40 +311,59 @@ if ( ! function_exists('form_dropdown'))
 	/**
 	 * Drop-down Menu
 	 *
-	 * @param	mixed	$name
+	 * @param	mixed	$data
 	 * @param	mixed	$options
 	 * @param	mixed	$selected
 	 * @param	mixed	$extra
 	 * @return	string
 	 */
-	function form_dropdown($name = '', $options = array(), $selected = array(), $extra = '')
+	function form_dropdown($data = '', $options = array(), $selected = array(), $extra = '')
 	{
-		// If name is really an array then we'll call the function again using the array
-		if (is_array($name) && isset($name['name']))
-		{
-			isset($name['options']) OR $name['options'] = array();
-			isset($name['selected']) OR $name['selected'] = array();
-			isset($name['extra']) OR $name['extra'] = array();
+		$defaults = array();
 
-			return form_dropdown($name['name'], $name['options'], $name['selected'], $name['extra']);
+		if (is_array($data))
+		{
+			if (isset($data['selected']))
+			{
+				$selected = $data['selected'];
+				unset($data['selected']); // select tags don't have a selected attribute
+			}
+
+			if (isset($data['options']))
+			{
+				$options = $data['options'];
+				unset($data['options']); // select tags don't use an options attribute
+			}
+		}
+		else
+		{
+			$defaults = array('name' => $data);
 		}
 
 		is_array($selected) OR $selected = array($selected);
+		is_array($options) OR $options = array($options);
 
 		// If no selected state was submitted we will attempt to set it automatically
-		if (count($selected) === 0 && isset($_POST[$name]))
+		if (empty($selected))
 		{
-			$selected = array($_POST[$name]);
+			if (is_array($data))
+			{
+				if (isset($data['name'], $_POST[$data['name']]))
+				{
+					$selected = array($_POST[$data['name']]);
+				}
+			}
+			elseif (isset($_POST[$data]))
+			{
+				$selected = array($_POST[$data]);
+			}
 		}
 
-		if ($extra != '')
-		{
-			$extra = ' '.$extra;
-		}
+		$extra = _attributes_to_string($extra);
 
 		$multiple = (count($selected) > 1 && strpos($extra, 'multiple') === FALSE) ? ' multiple="multiple"' : '';
 
-		$form = '<select name="'.$name.'"'.$extra.$multiple.">\n";
+		$form = '<select '.rtrim(_parse_form_attributes($data, $defaults)).$extra.$multiple.">\n";
 
 		foreach ($options as $key => $val)
 		{
@@ -424,11 +458,7 @@ if ( ! function_exists('form_radio'))
 	 */
 	function form_radio($data = '', $value = '', $checked = FALSE, $extra = '')
 	{
-		if ( ! is_array($data))
-		{
-			$data = array('name' => $data);
-		}
-
+		is_array($data) OR $data = array('name' => $data);
 		$data['type'] = 'radio';
 		return form_checkbox($data, $value, $checked, $extra);
 	}
@@ -448,7 +478,12 @@ if ( ! function_exists('form_submit'))
 	 */
 	function form_submit($data = '', $value = '', $extra = '')
 	{
-		$defaults = array('type' => 'submit', 'name' => ( ! is_array($data) ? $data : ''), 'value' => $value);
+		$defaults = array(
+			'type' => 'submit',
+			'name' => is_array($data) ? '' : $data,
+			'value' => $value
+		);
+
 		return '<input '._parse_form_attributes($data, $defaults).$extra." />\n";
 	}
 }
@@ -467,7 +502,12 @@ if ( ! function_exists('form_reset'))
 	 */
 	function form_reset($data = '', $value = '', $extra = '')
 	{
-		$defaults = array('type' => 'reset', 'name' => ( ! is_array($data) ? $data : ''), 'value' => $value);
+		$defaults = array(
+			'type' => 'reset',
+			'name' => is_array($data) ? '' : $data,
+			'value' => $value
+		);
+
 		return '<input '._parse_form_attributes($data, $defaults).$extra." />\n";
 	}
 }
@@ -486,7 +526,11 @@ if ( ! function_exists('form_button'))
 	 */
 	function form_button($data = '', $content = '', $extra = '')
 	{
-		$defaults = array('name' => ( ! is_array($data) ? $data : ''), 'type' => 'button');
+		$defaults = array(
+			'name' => is_array($data) ? '' : $data,
+			'type' => 'button'
+		);
+
 		if (is_array($data) && isset($data['content']))
 		{
 			$content = $data['content'];
@@ -542,12 +586,12 @@ if ( ! function_exists('form_fieldset'))
 	 * use form_fieldset_close()
 	 *
 	 * @param	string	The legend text
-	 * @param	string	Additional attributes
+	 * @param	array	Additional attributes
 	 * @return	string
 	 */
 	function form_fieldset($legend_text = '', $attributes = array())
 	{
-		$fieldset = '<fieldset'._attributes_to_string($attributes, FALSE).">\n";
+		$fieldset = '<fieldset'._attributes_to_string($attributes).">\n";
 		if ($legend_text !== '')
 		{
 			return $fieldset.'<legend>'.$legend_text."</legend>\n";
@@ -668,37 +712,33 @@ if ( ! function_exists('set_select'))
 	 */
 	function set_select($field = '', $value = '', $default = FALSE)
 	{
-		$OBJ =& _get_validation_object();
+		$CI =& get_instance();
 
-		if ($OBJ === FALSE)
+		if (isset($CI->form_validation) && is_object($CI->form_validation) && $CI->form_validation->has_rule($field))
 		{
-			if ( ! isset($_POST[$field]))
+			return $CI->form_validation->set_select($field, $value, $default);
+		}
+		elseif (($input = $CI->input->post($field, FALSE)) === NULL)
+		{
+			return ($default === TRUE) ? ' selected="selected"' : '';
+		}
+
+		$value = (string) $value;
+		if (is_array($input))
+		{
+			// Note: in_array('', array(0)) returns TRUE, do not use it
+			foreach ($input as &$v)
 			{
-				if (count($_POST) === 0 && $default === TRUE)
+				if ($value === $v)
 				{
 					return ' selected="selected"';
 				}
-				return '';
 			}
 
-			$field = $_POST[$field];
-
-			if (is_array($field))
-			{
-				if ( ! in_array($value, $field))
-				{
-					return '';
-				}
-			}
-			elseif (($field == '' OR $value == '') OR $field !== $value)
-			{
-				return '';
-			}
-
-			return ' selected="selected"';
+			return '';
 		}
 
-		return $OBJ->set_select($field, $value, $default);
+		return ($input === $value) ? ' selected="selected"' : '';
 	}
 }
 
@@ -719,37 +759,33 @@ if ( ! function_exists('set_checkbox'))
 	 */
 	function set_checkbox($field = '', $value = '', $default = FALSE)
 	{
-		$OBJ =& _get_validation_object();
+		$CI =& get_instance();
 
-		if ($OBJ === FALSE)
+		if (isset($CI->form_validation) && is_object($CI->form_validation) && $CI->form_validation->has_rule($field))
 		{
-			if ( ! isset($_POST[$field]))
+			return $CI->form_validation->set_checkbox($field, $value, $default);
+		}
+		elseif (($input = $CI->input->post($field, FALSE)) === NULL)
+		{
+			return ($default === TRUE) ? ' checked="checked"' : '';
+		}
+
+		$value = (string) $value;
+		if (is_array($input))
+		{
+			// Note: in_array('', array(0)) returns TRUE, do not use it
+			foreach ($input as &$v)
 			{
-				if (count($_POST) === 0 && $default === TRUE)
+				if ($value === $v)
 				{
 					return ' checked="checked"';
 				}
-				return '';
 			}
 
-			$field = $_POST[$field];
-
-			if (is_array($field))
-			{
-				if ( ! in_array($value, $field))
-				{
-					return '';
-				}
-			}
-			elseif (($field == '' OR $value == '') OR $field !== $value)
-			{
-				return '';
-			}
-
-			return ' checked="checked"';
+			return '';
 		}
 
-		return $OBJ->set_checkbox($field, $value, $default);
+		return ($input === $value) ? ' checked="checked"' : '';
 	}
 }
 
@@ -763,47 +799,25 @@ if ( ! function_exists('set_radio'))
 	 * Let's you set the selected value of a radio field via info in the POST array.
 	 * If Form Validation is active it retrieves the info from the validation class
 	 *
-	 * @param	string
-	 * @param	string
-	 * @param	bool
+	 * @param	string	$field
+	 * @param	string	$value
+	 * @param	bool	$default
 	 * @return	string
 	 */
 	function set_radio($field = '', $value = '', $default = FALSE)
 	{
-		$OBJ =& _get_validation_object();
+		$CI =& get_instance();
 
-		if ($OBJ === FALSE)
+		if (isset($CI->form_validation) && is_object($CI->form_validation) && $CI->form_validation->has_rule($field))
 		{
-			if ( ! isset($_POST[$field]))
-			{
-				if (count($_POST) === 0 && $default === TRUE)
-				{
-					return ' checked="checked"';
-				}
-				return '';
-			}
-
-			$field = $_POST[$field];
-
-			if (is_array($field))
-			{
-				if ( ! in_array($value, $field))
-				{
-					return '';
-				}
-			}
-			else
-			{
-				if (($field == '' OR $value == '') OR $field !== $value)
-				{
-					return '';
-				}
-			}
-
-			return ' checked="checked"';
+			return $CI->form_validation->set_radio($field, $value, $default);
+		}
+		elseif (($input = $CI->input->post($field, FALSE)) === NULL)
+		{
+			return ($default === TRUE) ? ' checked="checked"' : '';
 		}
 
-		return $OBJ->set_radio($field, $value, $default);
+		return ($input === (string) $value) ? ' checked="checked"' : '';
 	}
 }
 
@@ -920,44 +934,23 @@ if ( ! function_exists('_attributes_to_string'))
 	 * Helper function used by some of the form helpers
 	 *
 	 * @param	mixed
-	 * @param	bool
 	 * @return	string
 	 */
-	function _attributes_to_string($attributes, $formtag = FALSE)
+	function _attributes_to_string($attributes)
 	{
-		if (is_string($attributes) && strlen($attributes) > 0)
+		if (empty($attributes))
 		{
-			if ($formtag === TRUE && strpos($attributes, 'method=') === FALSE)
-			{
-				$attributes .= ' method="post"';
-			}
-
-			if ($formtag === TRUE && strpos($attributes, 'accept-charset=') === FALSE)
-			{
-				$attributes .= ' accept-charset="'.strtolower(config_item('charset')).'"';
-			}
-
-			return ' '.$attributes;
+			return '';
 		}
 
-		if (is_object($attributes) && count($attributes) > 0)
+		if (is_object($attributes))
 		{
 			$attributes = (array) $attributes;
 		}
 
-		if (is_array($attributes) && ($formtag === TRUE OR count($attributes) > 0))
+		if (is_array($attributes))
 		{
 			$atts = '';
-
-			if ( ! isset($attributes['method']) && $formtag === TRUE)
-			{
-				$atts .= ' method="post"';
-			}
-
-			if ( ! isset($attributes['accept-charset']) && $formtag === TRUE)
-			{
-				$atts .= ' accept-charset="'.strtolower(config_item('charset')).'"';
-			}
 
 			foreach ($attributes as $key => $val)
 			{
@@ -966,6 +959,13 @@ if ( ! function_exists('_attributes_to_string'))
 
 			return $atts;
 		}
+
+		if (is_string($attributes))
+		{
+			return ' '.$attributes;
+		}
+
+		return FALSE;
 	}
 }
 
@@ -988,7 +988,7 @@ if ( ! function_exists('_get_validation_object'))
 		// We set this as a variable since we're returning by reference.
 		$return = FALSE;
 
-		if (FALSE !== ($object = $CI->load->is_loaded('form_validation')))
+		if (FALSE !== ($object = $CI->load->is_loaded('Form_validation')))
 		{
 			if ( ! isset($CI->$object) OR ! is_object($CI->$object))
 			{

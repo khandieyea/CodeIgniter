@@ -18,7 +18,7 @@
  *
  * @package		CodeIgniter
  * @author		EllisLab Dev Team
- * @copyright	Copyright (c) 2008 - 2013, EllisLab, Inc. (http://ellislab.com/)
+ * @copyright	Copyright (c) 2008 - 2014, EllisLab, Inc. (http://ellislab.com/)
  * @license		http://opensource.org/licenses/OSL-3.0 Open Software License (OSL 3.0)
  * @link		http://codeigniter.com
  * @since		Version 1.0
@@ -76,13 +76,14 @@ if ( ! function_exists('is_really_writable'))
 	 * the file, based on the read-only attribute. is_writable() is also unreliable
 	 * on Unix servers if safe_mode is on.
 	 *
+	 * @link	https://bugs.php.net/bug.php?id=54709
 	 * @param	string
 	 * @return	void
 	 */
 	function is_really_writable($file)
 	{
 		// If we're on a Unix server with safe_mode off we call is_writable
-		if (DIRECTORY_SEPARATOR === '/' && (bool) @ini_get('safe_mode') === FALSE)
+		if (DIRECTORY_SEPARATOR === '/' && (is_php('5.4') OR ! ini_get('safe_mode')))
 		{
 			return is_writable($file);
 		}
@@ -93,17 +94,17 @@ if ( ! function_exists('is_really_writable'))
 		if (is_dir($file))
 		{
 			$file = rtrim($file, '/').'/'.md5(mt_rand());
-			if (($fp = @fopen($file, FOPEN_WRITE_CREATE)) === FALSE)
+			if (($fp = @fopen($file, 'ab')) === FALSE)
 			{
 				return FALSE;
 			}
 
 			fclose($fp);
-			@chmod($file, DIR_WRITE_MODE);
+			@chmod($file, 0777);
 			@unlink($file);
 			return TRUE;
 		}
-		elseif ( ! is_file($file) OR ($fp = @fopen($file, FOPEN_WRITE_CREATE)) === FALSE)
+		elseif ( ! is_file($file) OR ($fp = @fopen($file, 'ab')) === FALSE)
 		{
 			return FALSE;
 		}
@@ -129,7 +130,7 @@ if ( ! function_exists('load_class'))
 	 * @param	string	the class name prefix
 	 * @return	object
 	 */
-	function &load_class($class, $directory = 'libraries', $prefix = 'CI_')
+	function &load_class($class, $directory = 'libraries', $param = NULL)
 	{
 		static $_classes = array();
 
@@ -147,7 +148,7 @@ if ( ! function_exists('load_class'))
 		{
 			if (file_exists($path.$directory.'/'.$class.'.php'))
 			{
-				$name = $prefix.$class;
+				$name = 'CI_'.$class;
 
 				if (class_exists($name, FALSE) === FALSE)
 				{
@@ -165,7 +166,7 @@ if ( ! function_exists('load_class'))
 
 			if (class_exists($name, FALSE) === FALSE)
 			{
-				require_once(APPPATH.$directory.'/'.config_item('subclass_prefix').$class.'.php');
+				require_once(APPPATH.$directory.'/'.$name.'.php');
 			}
 		}
 
@@ -176,13 +177,15 @@ if ( ! function_exists('load_class'))
 			// self-referencing loop with the Exceptions class
 			set_status_header(503);
 			echo 'Unable to locate the specified class: '.$class.'.php';
-			exit(EXIT_UNKNOWN_CLASS);
+			exit(5); // EXIT_UNK_CLASS
 		}
 
 		// Keep track of what we just loaded
 		is_loaded($class);
 
-		$_classes[$class] = new $name();
+		$_classes[$class] = isset($param)
+			? new $name($param)
+			: new $name();
 		return $_classes[$class];
 	}
 }
@@ -224,56 +227,51 @@ if ( ! function_exists('get_config'))
 	 * @param	array
 	 * @return	array
 	 */
-	function &get_config($replace = array())
+	function &get_config(Array $replace = array())
 	{
 		static $_config;
 
-		if (isset($_config))
+		if (empty($_config))
 		{
-			return $_config[0];
-		}
-
-		$file_path = APPPATH.'config/config.php';
-		$found = FALSE;
-		if (file_exists($file_path))
-		{
-			$found = TRUE;
-			require($file_path);
-		}
-
-		// Is the config file in the environment folder?
-		if (file_exists($file_path = APPPATH.'config/'.ENVIRONMENT.'/config.php'))
-		{
-			require($file_path);
-		}
-		elseif ( ! $found)
-		{
-			set_status_header(503);
-			echo 'The configuration file does not exist.';
-			exit(EXIT_CONFIG);
-		}
-
-		// Does the $config array exist in the file?
-		if ( ! isset($config) OR ! is_array($config))
-		{
-			set_status_header(503);
-			echo 'Your config file does not appear to be formatted correctly.';
-			exit(EXIT_CONFIG);
-		}
-
-		// Are any values being dynamically replaced?
-		if (count($replace) > 0)
-		{
-			foreach ($replace as $key => $val)
+			$file_path = APPPATH.'config/config.php';
+			$found = FALSE;
+			if (file_exists($file_path))
 			{
-				if (isset($config[$key]))
-				{
-					$config[$key] = $val;
-				}
+				$found = TRUE;
+				require($file_path);
 			}
+
+			// Is the config file in the environment folder?
+			if (file_exists($file_path = APPPATH.'config/'.ENVIRONMENT.'/config.php'))
+			{
+				require($file_path);
+			}
+			elseif ( ! $found)
+			{
+				set_status_header(503);
+				echo 'The configuration file does not exist.';
+				exit(3); // EXIT_CONFIG
+			}
+
+			// Does the $config array exist in the file?
+			if ( ! isset($config) OR ! is_array($config))
+			{
+				set_status_header(503);
+				echo 'Your config file does not appear to be formatted correctly.';
+				exit(3); // EXIT_CONFIG
+			}
+
+			// references cannot be directly assigned to static variables, so we use an array
+			$_config[0] =& $config;
 		}
 
-		return $_config[0] =& $config;
+		// Are any values being dynamically added or replaced?
+		foreach ($replace as $key => $val)
+		{
+			$_config[0][$key] = $val;
+		}
+
+		return $_config[0];
 	}
 }
 
@@ -289,20 +287,15 @@ if ( ! function_exists('config_item'))
 	 */
 	function config_item($item)
 	{
-		static $_config_item = array();
+		static $_config;
 
-		if ( ! isset($_config_item[$item]))
+		if (empty($_config))
 		{
-			$config =& get_config();
-
-			if ( ! isset($config[$item]))
-			{
-				return FALSE;
-			}
-			$_config_item[$item] = $config[$item];
+			// references cannot be directly assigned to static variables, so we use an array
+			$_config[0] =& get_config();
 		}
 
-		return $_config_item[$item];
+		return isset($_config[0][$item]) ? $_config[0][$item] : FALSE;
 	}
 }
 
@@ -365,6 +358,24 @@ if ( ! function_exists('is_https'))
 
 // ------------------------------------------------------------------------
 
+if ( ! function_exists('is_cli'))
+{
+
+	/**
+	 * Is CLI?
+	 *
+	 * Test to see if a request was made from the command line.
+	 *
+	 * @return 	bool
+	 */
+	function is_cli()
+	{
+		return (PHP_SAPI === 'cli' OR defined('STDIN'));
+	}
+}
+
+// ------------------------------------------------------------------------
+
 if ( ! function_exists('show_error'))
 {
 	/**
@@ -386,16 +397,17 @@ if ( ! function_exists('show_error'))
 		$status_code = abs($status_code);
 		if ($status_code < 100)
 		{
-			$exit_status = $status_code + EXIT__AUTO_MIN;
-			if ($exit_status > EXIT__AUTO_MAX)
+			$exit_status = $status_code + 9; // 9 is EXIT__AUTO_MIN
+			if ($exit_status > 125) // 125 is EXIT__AUTO_MAX
 			{
-				$exit_status = EXIT_ERROR;
+				$exit_status = 1; // EXIT_ERROR
 			}
+
 			$status_code = 500;
 		}
 		else
 		{
-			$exit_status = EXIT_ERROR;
+			$exit_status = 1; // EXIT_ERROR
 		}
 
 		$_error =& load_class('Exceptions', 'core');
@@ -423,7 +435,7 @@ if ( ! function_exists('show_404'))
 	{
 		$_error =& load_class('Exceptions', 'core');
 		$_error->show_404($page, $log_error);
-		exit(EXIT_UNKNOWN_FILE);
+		exit(4); // EXIT_UNKNOWN_FILE
 	}
 }
 
@@ -439,29 +451,19 @@ if ( ! function_exists('log_message'))
 	 *
 	 * @param	string	the error level: 'error', 'debug' or 'info'
 	 * @param	string	the error message
-	 * @param	bool	whether the error is a native PHP error
 	 * @return	void
 	 */
-	function log_message($level, $message, $php_error = FALSE)
+	function log_message($level, $message)
 	{
-		static $_log, $_log_threshold;
-
-		if ($_log_threshold === NULL)
-		{
-			$_log_threshold = config_item('log_threshold');
-		}
-
-		if ($_log_threshold === 0)
-		{
-			return;
-		}
+		static $_log;
 
 		if ($_log === NULL)
 		{
-			$_log =& load_class('Log', 'core');
+			// references cannot be directly assigned to static variables, so we use an array
+			$_log[0] =& load_class('Log', 'core');
 		}
 
-		$_log->write_log($level, $message, $php_error);
+		$_log[0]->write_log($level, $message);
 	}
 }
 
@@ -543,7 +545,7 @@ if ( ! function_exists('set_status_header'))
 
 		$server_protocol = isset($_SERVER['SERVER_PROTOCOL']) ? $_SERVER['SERVER_PROTOCOL'] : FALSE;
 
-		if (strpos(php_sapi_name(), 'cgi') === 0)
+		if (strpos(PHP_SAPI, 'cgi') === 0)
 		{
 			header('Status: '.$code.' '.$text, TRUE);
 		}
@@ -561,23 +563,34 @@ if ( ! function_exists('_exception_handler'))
 	/**
 	 * Exception Handler
 	 *
-	 * This is the custom exception handler that is declaired at the top
-	 * of Codeigniter.php. The main reason we use this is to permit
+	 * This is the custom exception handler that is declared at the top
+	 * of CodeIgniter.php. The main reason we use this is to permit
 	 * PHP errors to be logged in our own log files since the user may
 	 * not have access to server logs. Since this function
 	 * effectively intercepts PHP errors, however, we also need
 	 * to display errors based on the current error_reporting level.
 	 * We do that with the use of a PHP error template.
 	 *
-	 * @param	int
-	 * @param	string
-	 * @param	string
-	 * @param	int
+	 * @param	int	$severity
+	 * @param	string	$message
+	 * @param	string	$filepath
+	 * @param	int	$line
 	 * @return	void
 	 */
 	function _exception_handler($severity, $message, $filepath, $line)
 	{
-		$_error =& load_class('Exceptions', 'core');
+		$is_error = (((E_ERROR | E_COMPILE_ERROR | E_CORE_ERROR | E_USER_ERROR) & $severity) === $severity);
+
+		// When an error occurred, set the status header to '500 Internal Server Error'
+		// to indicate to the client something went wrong.
+		// This can't be done within the $_error->show_php_error method because
+		// it is only called when the display_errors flag is set (which isn't usually
+		// the case in a production environment) or when errors are ignored because
+		// they are above the error_reporting threshold.
+		if ($is_error)
+		{
+			set_status_header(500);
+		}
 
 		// Should we ignore the error? We'll get the current error_reporting
 		// level and add its bits with the severity bits to find out.
@@ -586,13 +599,50 @@ if ( ! function_exists('_exception_handler'))
 			return;
 		}
 
+		$_error =& load_class('Exceptions', 'core');
+		$_error->log_exception($severity, $message, $filepath, $line);
+
 		// Should we display the error?
-		if ((bool) ini_get('display_errors') === TRUE)
+		if (ini_get('display_errors'))
 		{
 			$_error->show_php_error($severity, $message, $filepath, $line);
 		}
 
-		$_error->log_exception($severity, $message, $filepath, $line);
+		// If the error is fatal, the execution of the script should be stopped because
+		// errors can't be recovered from. Halting the script conforms with PHP's
+		// default error handling. See http://www.php.net/manual/en/errorfunc.constants.php
+		if ($is_error)
+		{
+			exit(1); // EXIT_ERROR
+		}
+	}
+}
+
+// ------------------------------------------------------------------------
+
+if ( ! function_exists('_shutdown_handler'))
+{
+	/**
+	 * Shutdown Handler
+	 *
+	 * This is the shutdown handler that is declared at the top
+	 * of CodeIgniter.php. The main reason we use this is to simulate
+	 * a complete custom exception handler.
+	 *
+	 * E_STRICT is purposivly neglected because such events may have
+	 * been caught. Duplication or none? None is preferred for now.
+	 *
+	 * @link	http://insomanic.me.uk/post/229851073/php-trick-catching-fatal-errors-e-error-with-a
+	 * @return	void
+	 */
+	function _shutdown_handler()
+	{
+		$last_error = error_get_last();
+		if (isset($last_error) &&
+			($last_error['type'] & (E_ERROR | E_PARSE | E_CORE_ERROR | E_CORE_WARNING | E_COMPILE_ERROR | E_COMPILE_WARNING)))
+		{
+			_exception_handler($last_error['type'], $last_error['message'], $last_error['file'], $last_error['line']);
+		}
 	}
 }
 
@@ -708,6 +758,11 @@ if ( ! function_exists('function_usable'))
 	 * *suhosin.executor.disable_eval*. These settings will just
 	 * terminate script execution if a disabled function is executed.
 	 *
+	 * The above described behavior turned out to be a bug in Suhosin,
+	 * but even though a fix was commited for 0.9.34 on 2012-02-12,
+	 * that version is yet to be released. This function will therefore
+	 * be just temporary, but would probably be kept for a few years.
+	 *
 	 * @link	http://www.hardened-php.net/suhosin/
 	 * @param	string	$function_name	Function to check for
 	 * @return	bool	TRUE if the function exists and is safe to call,
@@ -723,9 +778,9 @@ if ( ! function_exists('function_usable'))
 			{
 				if (extension_loaded('suhosin'))
 				{
-					$_suhosin_func_blacklist = explode(',', trim(@ini_get('suhosin.executor.func.blacklist')));
+					$_suhosin_func_blacklist = explode(',', trim(ini_get('suhosin.executor.func.blacklist')));
 
-					if ( ! in_array('eval', $_suhosin_func_blacklist, TRUE) && @ini_get('suhosin.executor.disable_eval'))
+					if ( ! in_array('eval', $_suhosin_func_blacklist, TRUE) && ini_get('suhosin.executor.disable_eval'))
 					{
 						$_suhosin_func_blacklist[] = 'eval';
 					}

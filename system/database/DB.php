@@ -18,7 +18,7 @@
  *
  * @package		CodeIgniter
  * @author		EllisLab Dev Team
- * @copyright	Copyright (c) 2008 - 2013, EllisLab, Inc. (http://ellislab.com/)
+ * @copyright	Copyright (c) 2008 - 2014, EllisLab, Inc. (http://ellislab.com/)
  * @license		http://opensource.org/licenses/OSL-3.0 Open Software License (OSL 3.0)
  * @link		http://codeigniter.com
  * @since		Version 1.0
@@ -76,9 +76,13 @@ function &DB($params = '', $query_builder_override = NULL)
 			$active_group = $params;
 		}
 
-		if ( ! isset($active_group) OR ! isset($db[$active_group]))
+		if ( ! isset($active_group))
 		{
-			show_error('You have specified an invalid database connection group.');
+			show_error('You have not specified a database connection group via $active_group in your config/database.php file.');
+		}
+		elseif ( ! isset($db[$active_group]))
+		{
+			show_error('You have specified an invalid database connection group ('.$active_group.') in your config/database.php file.');
 		}
 
 		$params = $db[$active_group];
@@ -98,13 +102,13 @@ function &DB($params = '', $query_builder_override = NULL)
 		}
 
 		$params = array(
-				'dbdriver'	=> $dsn['scheme'],
-				'hostname'	=> isset($dsn['host']) ? rawurldecode($dsn['host']) : '',
-				'port'		=> isset($dsn['port']) ? rawurldecode($dsn['port']) : '',
-				'username'	=> isset($dsn['user']) ? rawurldecode($dsn['user']) : '',
-				'password'	=> isset($dsn['pass']) ? rawurldecode($dsn['pass']) : '',
-				'database'	=> isset($dsn['path']) ? rawurldecode(substr($dsn['path'], 1)) : ''
-			);
+			'dbdriver'	=> $dsn['scheme'],
+			'hostname'	=> isset($dsn['host']) ? rawurldecode($dsn['host']) : '',
+			'port'		=> isset($dsn['port']) ? rawurldecode($dsn['port']) : '',
+			'username'	=> isset($dsn['user']) ? rawurldecode($dsn['user']) : '',
+			'password'	=> isset($dsn['pass']) ? rawurldecode($dsn['pass']) : '',
+			'database'	=> isset($dsn['path']) ? rawurldecode(substr($dsn['path'], 1)) : ''
+		);
 
 		// Were additional config items set?
 		if (isset($dsn['query']))
@@ -173,11 +177,7 @@ function &DB($params = '', $query_builder_override = NULL)
 	// Load the DB driver
 	$driver_file = BASEPATH.'database/drivers/'.$params['dbdriver'].'/'.$params['dbdriver'].'_driver.php';
 
-	if ( ! file_exists($driver_file))
-	{
-		show_error('Invalid DB driver');
-	}
-
+	file_exists($driver_file) OR show_error('Invalid DB driver');
 	require_once($driver_file);
 
 	// Instantiate the DB adapter
@@ -200,11 +200,6 @@ function &DB($params = '', $query_builder_override = NULL)
 	if ($DB->autoinit === TRUE)
 	{
 		$DB->initialize();
-	}
-
-	if ( ! empty($params['stricton']))
-	{
-		$DB->query('SET SESSION sql_mode="STRICT_ALL_TABLES"');
 	}
 
 	return $DB;
