@@ -4,24 +4,35 @@
  *
  * An open source application development framework for PHP 5.2.4 or newer
  *
- * NOTICE OF LICENSE
+ * This content is released under the MIT License (MIT)
  *
- * Licensed under the Open Software License version 3.0
+ * Copyright (c) 2014, British Columbia Institute of Technology
  *
- * This source file is subject to the Open Software License (OSL 3.0) that is
- * bundled with this package in the files license.txt / license.rst.  It is
- * also available through the world wide web at this URL:
- * http://opensource.org/licenses/OSL-3.0
- * If you did not receive a copy of the license and are unable to obtain it
- * through the world wide web, please send an email to
- * licensing@ellislab.com so we can send you a copy immediately.
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
  *
- * @package		CodeIgniter
- * @author		EllisLab Dev Team
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ * THE SOFTWARE.
+ *
+ * @package	CodeIgniter
+ * @author	EllisLab Dev Team
  * @copyright	Copyright (c) 2008 - 2014, EllisLab, Inc. (http://ellislab.com/)
- * @license		http://opensource.org/licenses/OSL-3.0 Open Software License (OSL 3.0)
- * @link		http://codeigniter.com
- * @since		Version 1.0
+ * @copyright	Copyright (c) 2014, British Columbia Institute of Technology (http://bcit.ca/)
+ * @license	http://opensource.org/licenses/MIT	MIT License
+ * @link	http://codeigniter.com
+ * @since	Version 1.0.0
  * @filesource
  */
 defined('BASEPATH') OR exit('No direct script access allowed');
@@ -223,8 +234,6 @@ class CI_Form_validation {
 					$indexes[] = $matches[1][$i];
 				}
 			}
-
-			$is_array = TRUE;
 		}
 
 		// Build our master array
@@ -703,6 +712,12 @@ class CI_Form_validation {
 			{
 				$callable = TRUE;
 			}
+			elseif (is_array($rule) && isset($rule[0], $rule[1]) && is_callable($rule[1]))
+			{
+				// We have a "named" callable, so save the name
+				$callable = $rule[0];
+				$rule = $rule[1];
+			}
 
 			// Strip the parameter (if exists) from the rule
 			// Rules can contain a parameter: max_length[5]
@@ -714,7 +729,7 @@ class CI_Form_validation {
 			}
 
 			// Call the function that corresponds to the rule
-			if ($callback OR $callable)
+			if ($callback OR $callable !== FALSE)
 			{
 				if ($callback)
 				{
@@ -732,8 +747,14 @@ class CI_Form_validation {
 				else
 				{
 					$result = is_array($rule)
-						? $rule[0]->{$rule[1]}($postdata, $param)
-						: $rule($postdata, $param);
+						? $rule[0]->{$rule[1]}($postdata)
+						: $rule($postdata);
+
+					// Is $callable set to a rule name?
+					if ($callable !== FALSE)
+					{
+						$rule = $callable;
+					}
 				}
 
 				// Re-assign the result to the master data array
@@ -793,6 +814,12 @@ class CI_Form_validation {
 			// Did the rule test negatively? If so, grab the error.
 			if ($result === FALSE)
 			{
+				// Callable rules might not have named error messages
+				if ( ! is_string($rule))
+				{
+					return;
+				}
+
 				// Check if a custom message is defined
 				if (isset($this->_field_data[$row['field']]['errors'][$rule]))
 				{
@@ -1096,19 +1123,16 @@ class CI_Form_validation {
 	 * Check if the input value doesn't already exist
 	 * in the specified database field.
 	 *
-	 * @param	string
-	 * @param	string	field
+	 * @param	string	$str
+	 * @param	string	$field
 	 * @return	bool
 	 */
 	public function is_unique($str, $field)
 	{
 		sscanf($field, '%[^.].%[^.]', $table, $field);
-		if (isset($this->CI->db))
-		{
-			$query = $this->CI->db->limit(1)->get_where($table, array($field => $str));
-			return $query->num_rows() === 0;
-		}
-		return FALSE;
+		return isset($this->CI->db)
+			? ($this->CI->db->limit(1)->get_where($table, array($field => $str))->num_rows() === 0)
+			: FALSE;
 	}
 
 	// --------------------------------------------------------------------
@@ -1125,10 +1149,6 @@ class CI_Form_validation {
 		if ( ! is_numeric($val))
 		{
 			return FALSE;
-		}
-		else
-		{
-			$val = (int) $val;
 		}
 
 		return (MB_ENABLED === TRUE)
@@ -1151,10 +1171,6 @@ class CI_Form_validation {
 		{
 			return FALSE;
 		}
-		else
-		{
-			$val = (int) $val;
-		}
 
 		return (MB_ENABLED === TRUE)
 			? ($val >= mb_strlen($str))
@@ -1176,14 +1192,10 @@ class CI_Form_validation {
 		{
 			return FALSE;
 		}
-		else
-		{
-			$val = (int) $val;
-		}
 
 		return (MB_ENABLED === TRUE)
-			? (mb_strlen($str) === $val)
-			: (strlen($str) === $val);
+			? (mb_strlen($str) === (int) $val)
+			: (strlen($str) === (int) $val);
 	}
 
 	// --------------------------------------------------------------------
@@ -1219,7 +1231,7 @@ class CI_Form_validation {
 		// There's a bug affecting PHP 5.2.13, 5.3.2 that considers the
 		// underscore to be a valid hostname character instead of a dash.
 		// Reference: https://bugs.php.net/bug.php?id=51192
-		if (version_compare(PHP_VERSION, '5.2.13', '==') === 0 OR version_compare(PHP_VERSION, '5.3.2', '==') === 0)
+		if (version_compare(PHP_VERSION, '5.2.13', '==') OR version_compare(PHP_VERSION, '5.3.2', '=='))
 		{
 			sscanf($str, 'http://%[^/]', $host);
 			$str = substr_replace($str, strtr($host, array('_' => '-', '-' => '_')), 7, strlen($host));
@@ -1238,6 +1250,11 @@ class CI_Form_validation {
 	 */
 	public function valid_email($str)
 	{
+		if (function_exists('idn_to_ascii') && $atpos = strpos($str, '@'))
+		{
+			$str = substr($str, 0, ++$atpos).idn_to_ascii(substr($str, $atpos));
+		}
+
 		return (bool) filter_var($str, FILTER_VALIDATE_EMAIL);
 	}
 

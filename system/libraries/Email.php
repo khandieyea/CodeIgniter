@@ -4,24 +4,35 @@
  *
  * An open source application development framework for PHP 5.2.4 or newer
  *
- * NOTICE OF LICENSE
+ * This content is released under the MIT License (MIT)
  *
- * Licensed under the Open Software License version 3.0
+ * Copyright (c) 2014, British Columbia Institute of Technology
  *
- * This source file is subject to the Open Software License (OSL 3.0) that is
- * bundled with this package in the files license.txt / license.rst.  It is
- * also available through the world wide web at this URL:
- * http://opensource.org/licenses/OSL-3.0
- * If you did not receive a copy of the license and are unable to obtain it
- * through the world wide web, please send an email to
- * licensing@ellislab.com so we can send you a copy immediately.
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
  *
- * @package		CodeIgniter
- * @author		EllisLab Dev Team
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ * THE SOFTWARE.
+ *
+ * @package	CodeIgniter
+ * @author	EllisLab Dev Team
  * @copyright	Copyright (c) 2008 - 2014, EllisLab, Inc. (http://ellislab.com/)
- * @license		http://opensource.org/licenses/OSL-3.0 Open Software License (OSL 3.0)
- * @link		http://codeigniter.com
- * @since		Version 1.0
+ * @copyright	Copyright (c) 2014, British Columbia Institute of Technology (http://bcit.ca/)
+ * @license	http://opensource.org/licenses/MIT	MIT License
+ * @link	http://codeigniter.com
+ * @since	Version 1.0.0
  * @filesource
  */
 defined('BASEPATH') OR exit('No direct script access allowed');
@@ -1079,6 +1090,11 @@ class CI_Email {
 	 */
 	public function valid_email($email)
 	{
+		if (function_exists('idn_to_ascii') && $atpos = strpos($email, '@'))
+		{
+			$email = substr($email, 0, ++$atpos).idn_to_ascii(substr($email, $atpos));
+		}
+
 		return (bool) filter_var($email, FILTER_VALIDATE_EMAIL);
 	}
 
@@ -1173,16 +1189,16 @@ class CI_Email {
 		// If the current word is surrounded by {unwrap} tags we'll
 		// strip the entire chunk and replace it with a marker.
 		$unwrap = array();
-		if (preg_match_all('|(\{unwrap\}.+?\{/unwrap\})|s', $str, $matches))
+		if (preg_match_all('|\{unwrap\}(.+?)\{/unwrap\}|s', $str, $matches))
 		{
 			for ($i = 0, $c = count($matches[0]); $i < $c; $i++)
 			{
 				$unwrap[] = $matches[1][$i];
-				$str = str_replace($matches[1][$i], '{{unwrapped'.$i.'}}', $str);
+				$str = str_replace($matches[0][$i], '{{unwrapped'.$i.'}}', $str);
 			}
 		}
 
-		// Use PHP's native public function to do the initial wordwrap.
+		// Use PHP's native function to do the initial wordwrap.
 		// We set the cut flag to FALSE so that any individual words that are
 		// too long get left alone. In the next step we'll deal with them.
 		$str = wordwrap($str, $charlim, "\n", FALSE);
@@ -1193,7 +1209,7 @@ class CI_Email {
 		{
 			// Is the line within the allowed character count?
 			// If so we'll join it to the output and continue
-			if (strlen($line) <= $charlim)
+			if (mb_strlen($line) <= $charlim)
 			{
 				$output .= $line.$this->newline;
 				continue;
@@ -1203,16 +1219,16 @@ class CI_Email {
 			do
 			{
 				// If the over-length word is a URL we won't wrap it
-				if (preg_match('!\[url.+\]|://|wwww.!', $line))
+				if (preg_match('!\[url.+\]|://|www\.!', $line))
 				{
 					break;
 				}
 
 				// Trim the word down
-				$temp .= substr($line, 0, $charlim-1);
-				$line = substr($line, $charlim-1);
+				$temp .= mb_substr($line, 0, $charlim - 1);
+				$line = mb_substr($line, $charlim - 1);
 			}
-			while (strlen($line) > $charlim);
+			while (mb_strlen($line) > $charlim);
 
 			// If $temp contains data it means we had to split up an over-length
 			// word into smaller chunks so we'll add it back to our current line
@@ -1614,6 +1630,12 @@ class CI_Email {
 	 */
 	public function send($auto_clear = TRUE)
 	{
+		if ( ! isset($this->_headers['From']))
+		{
+			$this->_set_error_message('lang:email_no_from');
+			return FALSE;
+		}
+
 		if ($this->_replyto_flag === FALSE)
 		{
 			$this->reply_to($this->_headers['From']);
@@ -2234,14 +2256,9 @@ class CI_Email {
 	 */
 	protected function _mime_types($ext = '')
 	{
-		static $mimes;
-
 		$ext = strtolower($ext);
 
-		if ( ! is_array($mimes))
-		{
-			$mimes =& get_mimes();
-		}
+		$mimes =& get_mimes();
 
 		if (isset($mimes[$ext]))
 		{

@@ -4,24 +4,35 @@
  *
  * An open source application development framework for PHP 5.2.4 or newer
  *
- * NOTICE OF LICENSE
+ * This content is released under the MIT License (MIT)
  *
- * Licensed under the Open Software License version 3.0
+ * Copyright (c) 2014, British Columbia Institute of Technology
  *
- * This source file is subject to the Open Software License (OSL 3.0) that is
- * bundled with this package in the files license.txt / license.rst.  It is
- * also available through the world wide web at this URL:
- * http://opensource.org/licenses/OSL-3.0
- * If you did not receive a copy of the license and are unable to obtain it
- * through the world wide web, please send an email to
- * licensing@ellislab.com so we can send you a copy immediately.
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
  *
- * @package		CodeIgniter
- * @author		EllisLab Dev Team
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ * THE SOFTWARE.
+ *
+ * @package	CodeIgniter
+ * @author	EllisLab Dev Team
  * @copyright	Copyright (c) 2008 - 2014, EllisLab, Inc. (http://ellislab.com/)
- * @license		http://opensource.org/licenses/OSL-3.0 Open Software License (OSL 3.0)
- * @link		http://codeigniter.com
- * @since		Version 1.0
+ * @copyright	Copyright (c) 2014, British Columbia Institute of Technology (http://bcit.ca/)
+ * @license	http://opensource.org/licenses/MIT	MIT License
+ * @link	http://codeigniter.com
+ * @since	Version 1.0.0
  * @filesource
  */
 defined('BASEPATH') OR exit('No direct script access allowed');
@@ -243,7 +254,7 @@ class CI_Output {
 		}
 
 		$header = 'Content-Type: '.$mime_type
-			.(empty($charset) ? NULL : '; charset='.$charset);
+			.(empty($charset) ? '' : '; charset='.$charset);
 
 		$this->headers[] = array($header, TRUE);
 		return $this;
@@ -553,6 +564,11 @@ class CI_Output {
 			.$CI->config->item('index_page')
 			.$CI->uri->uri_string();
 
+		if ($CI->config->item('cache_query_string') && ! empty($_SERVER['QUERY_STRING']))
+		{
+			$uri .= '?'.$_SERVER['QUERY_STRING'];
+		}
+
 		$cache_path .= md5($uri);
 
 		if ( ! $fp = @fopen($cache_path, 'w+b'))
@@ -606,7 +622,7 @@ class CI_Output {
 
 		if (is_int($result))
 		{
-			@chmod($cache_path, 0666);
+			chmod($cache_path, 0640);
 			log_message('debug', 'Cache file written: '.$cache_path);
 
 			// Send HTTP cache-control headers to browser to match file cache settings.
@@ -636,7 +652,13 @@ class CI_Output {
 		$cache_path = ($CFG->item('cache_path') === '') ? APPPATH.'cache/' : $CFG->item('cache_path');
 
 		// Build the file path. The file name is an MD5 hash of the full URI
-		$uri =	$CFG->item('base_url').$CFG->item('index_page').$URI->uri_string;
+		$uri = $CFG->item('base_url').$CFG->item('index_page').$URI->uri_string;
+
+		if ($CFG->item('cache_query_string') && ! empty($_SERVER['QUERY_STRING']))
+		{
+			$uri .= '?'.$_SERVER['QUERY_STRING'];
+		}
+
 		$filepath = $cache_path.md5($uri);
 
 		if ( ! file_exists($filepath) OR ! $fp = @fopen($filepath, 'rb'))
@@ -714,6 +736,11 @@ class CI_Output {
 		if (empty($uri))
 		{
 			$uri = $CI->uri->uri_string();
+
+			if ($CI->config->item('cache_query_string') && ! empty($_SERVER['QUERY_STRING']))
+			{
+				$uri .= '?'.$_SERVER['QUERY_STRING'];
+			}
 		}
 
 		$cache_path .= md5($CI->config->item('base_url').$CI->config->item('index_page').$uri);
